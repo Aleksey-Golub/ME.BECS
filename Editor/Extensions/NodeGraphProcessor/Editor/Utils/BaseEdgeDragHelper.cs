@@ -100,6 +100,18 @@ namespace ME.BECS.Extensions.GraphProcessor
             graphView = null;
         }
 
+        public override void HandlePointerUp(PointerUpEvent evt) {
+            
+        }
+
+        public override bool HandlePointerDown(PointerDownEvent evt) {
+            return false;
+        }
+
+        public override void HandlePointerMove(PointerMoveEvent evt) {
+            
+        }
+        
         public override bool HandleMouseDown(MouseDownEvent evt)
         {
             Vector2 mousePosition = evt.mousePosition;
