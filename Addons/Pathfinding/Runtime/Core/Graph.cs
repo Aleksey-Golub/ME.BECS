@@ -1102,7 +1102,8 @@ namespace ME.BECS.Pathfinding {
                 results = results,
             }.Schedule(addConnectionsHandle);
             world.AddEndTickHandle(results.Dispose(floodFillPortalAreas));
-            return dependsOn;
+            // Path reset (ResetPathJob) and path building must wait until chunks/portals are rebuilt
+            return floodFillPortalAreas;
 
         }
 
