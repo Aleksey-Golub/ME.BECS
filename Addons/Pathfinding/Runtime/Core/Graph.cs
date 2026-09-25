@@ -296,6 +296,13 @@ namespace ME.BECS.Pathfinding {
             var root = graph.Read<RootGraphComponent>();
             var fromPortalInfo = GetNearestPortal(state, in root, from, from, PortalInfo.Invalid);
             var toPortalInfo = GetNearestPortal(state, in root, from, to, in fromPortalInfo);
+            if (fromPortalInfo.IsValid == false || toPortalInfo.IsValid == false) {
+                // No portal found for the start or target point (e.g. the target became unreachable after the graph was rebuilt)
+                return new PathInfo() {
+                    pathState = PathState.Failed,
+                    to = to,
+                };
+            }
             
             var srcArea = root.chunks[fromPortalInfo.chunkIndex].portals.list[state, fromPortalInfo.portalIndex].globalArea;
             var nearestPortalToTarget = GetNearestPortal(state, in root, from, to, PortalInfo.Invalid);
