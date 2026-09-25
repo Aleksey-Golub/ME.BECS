@@ -44,18 +44,15 @@ namespace ME.BECS {
             }
             #endif
             if (this.isGameObject == true) {
-                UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationHandle<UnityEngine.Object> op;
+                UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationHandle<UnityEngine.GameObject> op;
                 if (this.sourceReference.OperationHandle.IsValid() == true) {
-                    op = this.sourceReference.OperationHandle.Convert<UnityEngine.Object>();
+                    op = this.sourceReference.OperationHandle.Convert<UnityEngine.GameObject>();
                 } else {
-                    op = this.sourceReference.LoadAssetAsync<UnityEngine.Object>();
+                    op = this.sourceReference.LoadAssetAsync<UnityEngine.GameObject>();
                     op.WaitForCompletion();
                 }
-
-                if (op.Result is UnityEngine.GameObject go) {
-                    return go.GetComponent<T>();
-                }
-                return op.Result as T;
+                
+                return op.Result.GetComponent<T>();
             } else {
                 UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationHandle<T> op;
                 if (this.sourceReference.OperationHandle.IsValid() == true) {
@@ -63,6 +60,43 @@ namespace ME.BECS {
                 } else {
                     op = this.sourceReference.LoadAssetAsync<T>();
                     op.WaitForCompletion();
+                }
+                return op.Result;
+            }
+        }
+
+        public async UnityEngine.Awaitable<T> LoadAsync<T>() where T : UnityEngine.Object {
+            if (this.source != null) {
+                if (this.source is T obj) return obj;
+                return null;
+            }
+            if (this.sourceReference == null || string.IsNullOrEmpty(this.sourceReference.AssetGUID) == true) return null;
+            #if UNITY_EDITOR
+            if (UnityEditor.EditorApplication.isPlaying == false) {
+                var obj = this.sourceReference.editorAsset;
+                if (this.isGameObject == true && obj is UnityEngine.GameObject goEditor) {
+                    return goEditor.GetComponent<T>();
+                }
+                return obj as T;
+            }
+            #endif
+            if (this.isGameObject == true) {
+                UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationHandle<UnityEngine.GameObject> op;
+                if (this.sourceReference.OperationHandle.IsValid() == true) {
+                    op = this.sourceReference.OperationHandle.Convert<UnityEngine.GameObject>();
+                } else {
+                    op = this.sourceReference.LoadAssetAsync<UnityEngine.GameObject>();
+                    await op.Task;
+                }
+                
+                return op.Result.GetComponent<T>();
+            } else {
+                UnityEngine.ResourceManagement.AsyncOperations.AsyncOperationHandle<T> op;
+                if (this.sourceReference.OperationHandle.IsValid() == true) {
+                    op = this.sourceReference.OperationHandle.Convert<T>();
+                } else {
+                    op = this.sourceReference.LoadAssetAsync<T>();
+                    await op.Task;
                 }
                 return op.Result;
             }
@@ -155,22 +189,39 @@ namespace ME.BECS {
         public ObjectReferenceRegistryItem[] objects = System.Array.Empty<ObjectReferenceRegistryItem>();
 
         internal uint sourceId;
-        private readonly Dictionary<uint, ItemInfo> itemLookup = new Dictionary<uint, ItemInfo>();
+        internal readonly Dictionary<uint, ItemInfo> itemLookup = new Dictionary<uint, ItemInfo>();
+        internal readonly Dictionary<UnityEngine.Object, uint> objectLookup = new Dictionary<UnityEngine.Object, uint>();
 
+        public bool ValidateRemoved() {
+            var result = false;
+            #if UNITY_EDITOR
+            var removedObjects = new System.Collections.Generic.List<ObjectReferenceRegistryItem>();
+            foreach (var obj in this.objects) {
+                if (obj.IsValid() == false) {
+                    removedObjects.Add(obj);
+                    result = true;
+                }
+            }
+            foreach (var obj in removedObjects) {
+                UnityEngine.Debug.Log("Removed: " + obj, obj);
+                UnityEditor.AssetDatabase.DeleteAsset(UnityEditor.AssetDatabase.GetAssetPath(obj));
+            }
+
+            if (result == true) {
+                this.Validate();
+            }
+            #endif
+            return result;
+        }
+        
         [UnityEngine.ContextMenu("Call OnValidate")]
-        public void OnValidate() {
+        public void Validate() {
 
             var newObjects = new System.Collections.Generic.List<ItemInfo>();
-            var removedObjects = new System.Collections.Generic.List<ObjectReferenceRegistryItem>();
             {
                 var list = this.objects.ToList();
                 list.RemoveAll(x => x == null);
                 this.objects = list.ToArray();
-                foreach (var obj in this.objects) {
-                    if (obj.IsValid() == false) {
-                        removedObjects.Add(obj);
-                    }
-                }
             }
             foreach (var item in this.items) {
                 var found = false;
@@ -194,10 +245,6 @@ namespace ME.BECS {
                     System.IO.Directory.CreateDirectory(dir);
                 }
 
-                foreach (var obj in removedObjects) {
-                    UnityEditor.AssetDatabase.DeleteAsset(UnityEditor.AssetDatabase.GetAssetPath(obj));
-                }
-
                 foreach (var obj in newObjects) {
                     var instance = UnityEngine.ScriptableObject.CreateInstance<ObjectReferenceRegistryItem>();
                     instance.name = obj.sourceId.ToString();
@@ -218,9 +265,59 @@ namespace ME.BECS {
             #endif
 
         }
+
+        public void ValidateNow() {
+            
+            var newObjects = new System.Collections.Generic.List<ItemInfo>();
+            {
+                var list = this.objects.ToList();
+                list.RemoveAll(x => x == null);
+                this.objects = list.ToArray();
+            }
+            foreach (var item in this.items) {
+                var found = false;
+                foreach (var obj in this.objects) {
+                    if (obj.data.Equals(item) == true) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (found == false) {
+                    newObjects.Add(item);
+                }
+            }
+            this.items = System.Array.Empty<ItemInfo>();
+            
+            #if UNITY_EDITOR
+            var curDir = System.IO.Path.GetDirectoryName(UnityEditor.AssetDatabase.GetAssetPath(this));
+            var dir = $"{curDir}/ObjectReferenceRegistry";
+            if (System.IO.Directory.Exists(dir) == false) {
+                System.IO.Directory.CreateDirectory(dir);
+            }
+
+            foreach (var obj in newObjects) {
+                var instance = UnityEngine.ScriptableObject.CreateInstance<ObjectReferenceRegistryItem>();
+                instance.name = obj.sourceId.ToString();
+                instance.data = obj;
+                var path = $"{dir}/{instance.name}.asset";
+                UnityEditor.AssetDatabase.CreateAsset(instance, path);
+                UnityEditor.AssetDatabase.ImportAsset(path);
+            }
+
+            var items = UnityEditor.AssetDatabase.FindAssets("t:ObjectReferenceRegistryItem", new string[] { dir });
+            this.objects = new ObjectReferenceRegistryItem[items.Length];
+            var index = 0;
+            foreach (var guid in items) {
+                var item = UnityEditor.AssetDatabase.LoadAssetAtPath<ObjectReferenceRegistryItem>(UnityEditor.AssetDatabase.GUIDToAssetPath(guid));
+                this.objects[index++] = item;
+            }
+            #endif
+
+        }
         
         public void Initialize() {
             this.itemLookup.Clear();
+            this.objectLookup.Clear();
             this.sourceId = 0u;
             foreach (var item in this.objects) {
                 if (this.itemLookup.TryAdd(item.data.sourceId, item.data) == false) {
@@ -282,8 +379,9 @@ namespace ME.BECS {
                 } else {
                     this.itemLookup.Add(nextId, item);
                 }
+                this.objectLookup.TryAdd(source, nextId);
                 #if UNITY_EDITOR
-                this.OnValidate();
+                this.ValidateNow();
                 #endif
                 return nextId;
             }

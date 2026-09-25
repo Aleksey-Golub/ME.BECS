@@ -212,7 +212,8 @@ namespace ME.BECS.Editor.CsvImporter {
                                 ++count;
                             }
                         }
-                        if (startIndex >= 0) ObjectReferenceValidate.Validate(startIndex, count);
+                        // if (startIndex >= 0) ObjectReferenceValidate.Validate(startIndex, count);
+                        if (startIndex >= 0) ObjectReferenceValidate.Validate();
                     }
                     
                     for (var index = 0; index < data.Count; ++index) {
