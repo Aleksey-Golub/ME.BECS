@@ -70,7 +70,23 @@ namespace ME.BECS.Attack {
             var targets = this.ent.Read<AttackTargetsComponent>().targets;
             if (targets.IsCreated == true) targets.Dispose();
             this.ent.Remove<AttackTargetsComponent>();
-            
+
+        }
+
+        [INLINE(256)]
+        private readonly void BreakFireCycle() {
+
+            // The attack cycle is broken by a target change or target loss.
+            // If at least one shot has already been fired in this cycle, complete the cycle
+            // and start the reload right now: fireTimer will never reach fireTime after the
+            // reset below, so without this the ReloadedComponent would stay forever and the
+            // unit could fire at the next target instantly, skipping reloadTime completely.
+            if (this.IsFireUsed() == true || this.readComponentRuntimeFire.fireRateCount > 0u) {
+                this.IsReloaded = false;
+                this.componentRuntimeFire.fireRateCount = 0u;
+            }
+            this.CanFire = false;
+
         }
 
         [INLINE(256)]
@@ -78,14 +94,14 @@ namespace ME.BECS.Attack {
             this.CleanUpTargets();
             if (ent.IsAlive() == true) {
                 if (this.ent.Read<AttackTargetComponent>().target != ent) {
-                    this.CanFire = false;
+                    this.BreakFireCycle();
                 }
                 this.ent.Set(new AttackTargetComponent() {
                     target = ent,
                 });
             } else {
                 this.ent.Remove<AttackTargetComponent>();
-                this.CanFire = false;
+                this.BreakFireCycle();
             }
         }
 
@@ -94,7 +110,7 @@ namespace ME.BECS.Attack {
             this.CleanUpTarget();
             if (list.IsCreated == true) {
                 if (this.ent.Read<AttackTargetsComponent>().targets != list) {
-                    this.CanFire = false;
+                    this.BreakFireCycle();
                     var targets = this.ent.Read<AttackTargetsComponent>().targets;
                     if (targets.IsCreated == true) targets.Dispose();
                 }
@@ -105,7 +121,7 @@ namespace ME.BECS.Attack {
                 var targets = this.ent.Read<AttackTargetsComponent>().targets;
                 if (targets.IsCreated == true) targets.Dispose();
                 this.ent.Remove<AttackTargetsComponent>();
-                this.CanFire = false;
+                this.BreakFireCycle();
             }
         }
 
